@@ -17,9 +17,56 @@ console.log(`Loaded ADMIN_ID: ${adminId}`);
 
 const freeExpireDays = parseInt(process.env.EXPIRE_DAYS) || 30;
 
-// Spam Protection Config
-const rateLimitMs = parseInt(process.env.RATE_LIMIT_MS) || 2000;
-const requiredChannel = process.env.REQUIRED_CHANNEL ? process.env.REQUIRED_CHANNEL.replace('@', '') : null; // Remove @ if user added it
+// Dynamic Config Cache
+let botConfig = {
+    rateLimitMs: 2000,
+    requiredChannel: null,
+    paymentInfo: "N/A",
+    premiumCost: "N/A"
+};
+
+// Seed Default Config Values to DB (on first run)
+const seedDefaults = async () => {
+    try {
+        const defaults = {
+            'rate_limit_ms': process.env.RATE_LIMIT_MS || '2000',
+            'required_channel': process.env.REQUIRED_CHANNEL || '',
+            'payment_info': process.env.PAYMENT_INFO || 'KBZ Pay: 09xxxxxxxxx\nWave Pay: 09xxxxxxxxx',
+            'premium_cost': process.env.PREMIUM_COST || '5000 ks / month'
+        };
+
+        for (const [key, value] of Object.entries(defaults)) {
+            const existing = await db.getConfig(key);
+            if (!existing) {
+                await db.setConfig(key, value);
+                console.log(`✅ Seeded default: ${key}`);
+            }
+        }
+    } catch (e) {
+        console.error('Failed to seed defaults:', e);
+    }
+};
+
+// Load Config from DB
+const loadConfig = async () => {
+    try {
+        const dbChannel = await db.getConfig('required_channel');
+        botConfig.requiredChannel = dbChannel ? dbChannel.replace('@', '') : null;
+
+        const dbRateLimit = await db.getConfig('rate_limit_ms');
+        botConfig.rateLimitMs = dbRateLimit ? parseInt(dbRateLimit) : 2000;
+
+        const dbPayment = await db.getConfig('payment_info');
+        botConfig.paymentInfo = dbPayment || "N/A";
+
+        const dbCost = await db.getConfig('premium_cost');
+        botConfig.premiumCost = dbCost || "N/A";
+
+        console.log('🔄 Configuration Loaded:', botConfig);
+    } catch (e) {
+        console.error('Failed to load config:', e);
+    }
+};
 
 // Rate Limit Map
 const userLastMessage = new Map();
@@ -28,7 +75,7 @@ const userLastMessage = new Map();
 setInterval(() => {
     const now = Date.now();
     for (const [userId, lastTime] of userLastMessage.entries()) {
-        if (now - lastTime > rateLimitMs) {
+        if (now - lastTime > botConfig.rateLimitMs) {
             userLastMessage.delete(userId);
         }
     }
@@ -113,7 +160,7 @@ bot.use(async (ctx, next) => {
         if (!isUserAdmin) {
             const now = Date.now();
             const lastTime = userLastMessage.get(userId) || 0;
-            if (now - lastTime < rateLimitMs) {
+            if (now - lastTime < botConfig.rateLimitMs) {
                 // Silent Drop for strict spam protection.
                 return;
             }
@@ -121,16 +168,16 @@ bot.use(async (ctx, next) => {
         }
 
         // 3. Force Subscribe Check (Skip for Admin or if Channel not set)
-        if (requiredChannel && !isUserAdmin) {
+        if (botConfig.requiredChannel && !isUserAdmin) {
             // Only check for Message updates (commands, text) or CallbackQueries
             if (ctx.message || ctx.callbackQuery) {
                 try {
-                    const chatMember = await ctx.telegram.getChatMember(`@${requiredChannel}`, userId);
+                    const chatMember = await ctx.telegram.getChatMember(`@${botConfig.requiredChannel}`, userId);
                     // Status: creator, administrator, member, restricted
                     const validStatus = ['creator', 'administrator', 'member', 'restricted'];
                     if (!validStatus.includes(chatMember.status)) {
                         // Not a member
-                        const channelLink = `https://t.me/${requiredChannel}`;
+                        const channelLink = `https://t.me/${botConfig.requiredChannel}`;
                         // If callback, answer it
                         if (ctx.callbackQuery) await ctx.answerCbQuery(t(lang, 'join_channel'), { show_alert: true });
 
@@ -151,8 +198,7 @@ bot.use(async (ctx, next) => {
 
 // --- Commands ---
 
-const premiumCost = process.env.PREMIUM_COST || "$5 / month";
-const paymentInfo = (process.env.PAYMENT_INFO || "Contact Admin").replace(/\\n/g, '\n');
+
 
 // Helper to Send Main Menu
 const sendMainMenu = async (ctx, lang) => {
@@ -245,7 +291,7 @@ const handleMyKey = async (ctx) => {
             const api = serverManager.getApi(key.server_id);
             if (api) {
                 const server = serverManager.getServer(key.server_id);
-                const remark = server ? `${server.name} ( mmkeys_bot )` : "";
+                const remark = server ? `${server.name} ( OpenBullet MM )` : "";
 
                 const link = await api.generateLink(key.inbound_id, key.uuid, key.email, remark);
                 if (link) ctx.replyWithMarkdown(t(lang, 'mykey_list', { server: key.server_id, email: key.email, link }));
@@ -407,8 +453,16 @@ bot.action(/^proto:(.+):(\d+)$/, async (ctx) => {
             }
         }
 
-        await ctx.answerCbQuery(t(lang, 'generating'));
-        ctx.editMessageText(t(lang, 'generating'));
+        try {
+            await ctx.answerCbQuery(t(lang, 'generating'));
+        } catch (e) { }
+
+        try {
+            await ctx.editMessageText(t(lang, 'generating'));
+        } catch (e) {
+            // Ignore "message is not modified" error if user spams click
+            if (!e.description.includes('not modified')) throw e;
+        }
 
         // --- Single Key Policy: Delete Old Keys ---
         const existingKeys = await db.getKeys(userId);
@@ -448,7 +502,7 @@ bot.action(/^proto:(.+):(\d+)$/, async (ctx) => {
 
             // Generate Link
             const server = serverManager.getServer(serverId);
-            const remark = server ? `${server.name} ( mmkeys_bot )` : "";
+            const remark = server ? `${server.name} ( OpenBullet MM )` : "";
 
             const link = await api.generateLink(inboundId, result.uuid, email, remark);
 
@@ -499,7 +553,14 @@ bot.command('admin', async (ctx) => {
     msg += `\`/search_user\` <name> - Find User\n`;
     msg += `\`/create_code\` <days> <count> - Gift Code\n`;
     msg += `\`/maintenance\` <on/off> - Maintenance\n`;
-    msg += `\`/server_status\` - Check Servers`;
+    msg += `\`/server_status\` - Check Servers\n`;
+    msg += `\`/config\` - View Config\n`;
+    msg += `\`/set_channel\` - Set Required Channel\n`;
+    msg += `\`/set_price\` - Set Premium Cost\n`;
+    msg += `\`/set_payment\` - Set Payment Info\n`;
+    msg += `\`/list_servers\` - View Servers\n`;
+    msg += `\`/add_server\` <json> - Add Server\n`;
+    msg += `\`/del_server\` <id> - Remove Server`;
 
     ctx.replyWithMarkdown(msg);
 });
@@ -580,6 +641,69 @@ bot.command('server_status', async (ctx) => {
         }
     }
     ctx.replyWithMarkdown(msg);
+});
+
+// Dynamic Configuration Commands
+bot.command('config', async (ctx) => {
+    if (!isAdmin(ctx)) return;
+    const msg = `⚙️ *Current Configuration*\n\n` +
+        `📢 Required Channel: \`${botConfig.requiredChannel || 'None'}\`\n` +
+        `⏱️ Rate Limit: \`${botConfig.rateLimitMs}ms\`\n` +
+        `💰 Premium Cost: \`${botConfig.premiumCost}\`\n` +
+        `💳 Payment Info: \`${botConfig.paymentInfo.substring(0, 50)}...\`\n\n` +
+        `_Commands:_\n` +
+        `/set_channel <username/off>\n` +
+        `/set_ratelimit <ms>\n` +
+        `/set_price <text>\n` +
+        `/set_payment <text>`;
+    ctx.replyWithMarkdown(msg);
+});
+
+bot.command('set_channel', async (ctx) => {
+    if (!isAdmin(ctx)) return;
+    const input = ctx.message.text.split(" ")[1];
+    if (!input) return ctx.reply("Usage: /set_channel <username> or /set_channel off");
+
+    if (input.toLowerCase() === 'off') {
+        await db.setConfig('required_channel', '');
+        botConfig.requiredChannel = null;
+        ctx.reply("✅ Force Subscribe DISABLED.");
+    } else {
+        const channel = input.replace('@', '');
+        await db.setConfig('required_channel', channel);
+        botConfig.requiredChannel = channel;
+        ctx.reply(`✅ Force Subscribe set to: @${channel}`);
+    }
+});
+
+bot.command('set_ratelimit', async (ctx) => {
+    if (!isAdmin(ctx)) return;
+    const ms = parseInt(ctx.message.text.split(" ")[1]);
+    if (!ms || isNaN(ms)) return ctx.reply("Usage: /set_ratelimit <ms> (e.g., 2000)");
+
+    await db.setConfig('rate_limit_ms', ms);
+    botConfig.rateLimitMs = ms;
+    ctx.reply(`✅ Rate Limit updated to ${ms}ms.`);
+});
+
+bot.command('set_price', async (ctx) => {
+    if (!isAdmin(ctx)) return;
+    const text = ctx.message.text.substring(11).trim(); // Remove /set_price
+    if (!text) return ctx.reply("Usage: /set_price <text> (e.g., 5000 ks / month)");
+
+    await db.setConfig('premium_cost', text);
+    botConfig.premiumCost = text;
+    ctx.reply(`✅ Premium price updated to: ${text}`);
+});
+
+bot.command('set_payment', async (ctx) => {
+    if (!isAdmin(ctx)) return;
+    const text = ctx.message.text.substring(13).trim(); // Remove /set_payment
+    if (!text) return ctx.reply("Usage: /set_payment <text>");
+
+    await db.setConfig('payment_info', text);
+    botConfig.paymentInfo = text;
+    ctx.reply(`✅ Payment info updated.`);
 });
 
 bot.command('admin_user', async (ctx) => {
@@ -714,7 +838,7 @@ const sendPremiumInfo = async (ctx) => {
     const user = await db.getUser(ctx.from.id);
     const lang = user ? user.language : 'my';
 
-    const info = t(lang, 'premium_info', { price: premiumCost, payment: paymentInfo });
+    const info = t(lang, 'premium_info', { price: botConfig.premiumCost, payment: botConfig.paymentInfo.replace(/\\n/g, '\n') });
 
     ctx.replyWithMarkdown(info, Markup.inlineKeyboard([
         Markup.button.callback(t(lang, 'submit_proof_btn'), "submit_proof")
@@ -830,12 +954,12 @@ bot.action(/^ban:(\d+)$/, async (ctx) => {
         ctx.reply(`🚫 User ${targetUserId} BANNED.`);
         // Notify admin in the original message
         const originalText = ctx.callbackQuery.message.caption || ctx.callbackQuery.message.text;
-        const newText = `${originalText}\n\n🚫 *USER BANNED*`;
+        const newText = `${escapeHtml(originalText)}\n\n🚫 <b>USER BANNED</b>`;
 
         if (ctx.callbackQuery.message.caption) {
-            await ctx.editMessageCaption(newText, { parse_mode: 'Markdown' });
+            await ctx.editMessageCaption(newText, { parse_mode: 'HTML' });
         } else {
-            await ctx.editMessageText(newText, { parse_mode: 'Markdown' });
+            await ctx.editMessageText(newText, { parse_mode: 'HTML' });
         }
     } catch (e) {
         console.error(e);
@@ -924,13 +1048,90 @@ setInterval(async () => {
 
 console.log('🚀 Starting MMKeys Bot...');
 
-bot.launch().then(() => {
-    console.log('✅ MMKeys Bot is running (Multi-Server Refactor)...');
-}).catch(err => {
-    console.error('❌ Failed to launch bot:', err);
-    process.exit(1);
-});
+(async () => {
+    await seedDefaults();
+    await loadConfig();
+    await serverManager.loadServers();
+
+    bot.launch().then(() => {
+        console.log('✅ MMKeys Bot is running (Multi-Server Refactor)...');
+    }).catch(err => {
+        console.error('❌ Failed to launch bot:', err);
+        process.exit(1);
+    });
+})();
 
 // Enable graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+// Server Management Commands
+bot.command('list_servers', async (ctx) => {
+    if (!isAdmin(ctx)) return;
+    const servers = serverManager.getServers();
+    if (servers.length === 0) return ctx.reply("No active servers.");
+
+    let msg = "🖥️ *Server List*\n\n";
+    servers.forEach(s => {
+        msg += `🆔 \`${s.id}\`\nName: ${s.name}\nURL: ${s.url}\nFree: ${s.free}\n\n`;
+    });
+    ctx.replyWithMarkdown(msg);
+});
+
+bot.command('add_server', async (ctx) => {
+    if (!isAdmin(ctx)) return;
+    const jsonStr = ctx.message.text.substring(12); // Remove /add_server 
+    if (!jsonStr) return ctx.reply("Usage: `/add_server { \"id\": \"...\", ... }`", { parse_mode: 'Markdown' });
+
+    try {
+        const data = JSON.parse(jsonStr);
+        // Basic validation
+        if (!data.id || !data.name || !data.url || !data.username || !data.password) {
+            return ctx.reply("❌ Missing required fields (id, name, url, username, password).");
+        }
+
+        const result = await serverManager.addServer(data);
+        if (result.success) {
+            ctx.reply(`✅ Server ${data.name} added!`);
+        } else {
+            ctx.reply(`❌ Failed to add: ${result.msg}`);
+        }
+    } catch (e) {
+        ctx.reply("❌ Invalid JSON format.");
+    }
+});
+
+bot.command('del_server', async (ctx) => {
+    if (!isAdmin(ctx)) return;
+    const id = ctx.message.text.split(' ')[1];
+    if (!id) return ctx.reply("Usage: /del_server <id>");
+
+    const result = await serverManager.removeServer(id);
+    if (result.success) {
+        ctx.reply(`✅ Server ${id} removed.`);
+    } else {
+        ctx.reply(`❌ Failed: ${result.msg}`);
+    }
+});
+
+// Global Error Handlers
+bot.catch((err, ctx) => {
+    console.error(`❌ Telegraf Error for ${ctx.updateType}:`, err);
+    try {
+        ctx.reply('❌ An error occurred. Please try again later.');
+    } catch (e) {
+        console.error('Failed to send error message to user:', e);
+    }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error);
+    // Optionally notify admin
+    if (adminId) {
+        bot.telegram.sendMessage(adminId, `⚠️ Bot Error:\n${error.message}`).catch(() => { });
+    }
+});

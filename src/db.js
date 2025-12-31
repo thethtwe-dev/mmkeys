@@ -58,10 +58,21 @@ const configSchema = new mongoose.Schema({
     value: mongoose.Schema.Types.Mixed
 });
 
+const serverSchema = new mongoose.Schema({
+    id: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    url: { type: String, required: true },
+    username: { type: String, required: true },
+    password: { type: String, required: true },
+    active: { type: Boolean, default: true },
+    free: { type: Boolean, default: false }
+});
+
 const User = mongoose.model('User', userSchema);
 const Key = mongoose.model('Key', keySchema);
 const Coupon = mongoose.model('Coupon', couponSchema);
 const Config = mongoose.model('Config', configSchema);
+const Server = mongoose.model('Server', serverSchema);
 
 // --- User Management ---
 
@@ -310,6 +321,35 @@ const setConfig = async (key, value) => {
     }
 };
 
+const createServer = async (serverData) => {
+    try {
+        await Server.create(serverData);
+        return { success: true };
+    } catch (err) {
+        console.error('createServer Error:', err);
+        return { success: false, msg: err.message };
+    }
+};
+
+const deleteServer = async (id) => {
+    try {
+        await Server.deleteOne({ id });
+        return { success: true };
+    } catch (err) {
+        console.error('deleteServer Error:', err);
+        return { success: false, msg: err.message };
+    }
+};
+
+const getAllServers = async () => {
+    try {
+        return await Server.find({}).lean();
+    } catch (err) {
+        console.error('getAllServers Error:', err);
+        return [];
+    }
+};
+
 // Ensure createUser is compatible (maps to upsertUser for now, or simple insert)
 // index.js calls: await db.createUser(ctx.from.id);
 // We can just query if exists, if not create. But upsertUser is called in middleware too.
@@ -348,5 +388,8 @@ module.exports = {
     createCoupon,
     redeemCoupon,
     getConfig,
-    setConfig
+    setConfig,
+    createServer,
+    deleteServer,
+    getAllServers
 };
