@@ -79,6 +79,7 @@ We have prepared an automated script for easiest deployment on Ubuntu/Debian VPS
 During setup, you will be asked for:
 *   `TELEGRAM_BOT_TOKEN`: Your bot token from @BotFather.
 *   `ADMIN_ID`: Your numeric Telegram ID (get from @userinfobot).
+    *   **Multiple Admins**: Use comma-separated IDs: `ADMIN_ID=123456789,987654321`
 *   `MONGO_URI`: MongoDB connection string (e.g., from MongoDB Atlas).
 *   `PAYMENT_INFO`: Text displayed when users click "Buy Premium".
 

@@ -7,13 +7,15 @@ const messages = require('./messages');
 
 // Configuration
 const token = process.env.TELEGRAM_BOT_TOKEN;
-const adminId = parseInt(process.env.ADMIN_ID);
+// Support multiple admins: comma-separated IDs
+const adminIds = process.env.ADMIN_ID.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+const adminId = adminIds[0]; // Primary admin for legacy compatibility
 // Limits
 const gbToBytes = (gb) => Math.floor(gb * 1024 * 1024 * 1024);
 const limitGbFree = parseFloat(process.env.LIMIT_GB_FREE) || 1;
 const limitGbPremium = parseFloat(process.env.LIMIT_GB_PREMIUM) || 0; // 0 = Unlimited
 
-console.log(`Loaded ADMIN_ID: ${adminId}`);
+console.log(`Loaded ADMIN_ID(s): ${adminIds.join(', ')}`);
 
 const freeExpireDays = parseInt(process.env.EXPIRE_DAYS) || 30;
 
@@ -530,8 +532,10 @@ bot.command('status', handleStatus);
 
 const isAdmin = (ctx) => {
     const userId = ctx.from.id;
-    const isMatch = userId === adminId;
-    console.log(`Admin Check: User ${userId} vs Admin ${adminId} -> ${isMatch}`);
+    const isMatch = adminIds.includes(userId);
+    if (isMatch) {
+        console.log(`Admin Check: User ${userId} is an admin`);
+    }
     return isMatch;
 };
 
@@ -652,10 +656,10 @@ bot.command('config', async (ctx) => {
         `💰 Premium Cost: \`${botConfig.premiumCost}\`\n` +
         `💳 Payment Info: \`${botConfig.paymentInfo.substring(0, 50)}...\`\n\n` +
         `_Commands:_\n` +
-        `/set_channel <username/off>\n` +
-        `/set_ratelimit <ms>\n` +
-        `/set_price <text>\n` +
-        `/set_payment <text>`;
+        `/set\\_channel <username/off>\n` +
+        `/set\\_ratelimit <ms>\n` +
+        `/set\\_price <text>\n` +
+        `/set\\_payment <text>`;
     ctx.replyWithMarkdown(msg);
 });
 
@@ -701,8 +705,11 @@ bot.command('set_payment', async (ctx) => {
     const text = ctx.message.text.substring(13).trim(); // Remove /set_payment
     if (!text) return ctx.reply("Usage: /set_payment <text>");
 
-    await db.setConfig('payment_info', text);
-    botConfig.paymentInfo = text;
+    // Convert literal \n to actual newlines
+    const formattedText = text.replace(/\\n/g, '\n');
+
+    await db.setConfig('payment_info', formattedText);
+    botConfig.paymentInfo = formattedText;
     ctx.reply(`✅ Payment info updated.`);
 });
 

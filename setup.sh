@@ -36,6 +36,7 @@ if [ ! -f .env ]; then
     cat > .env << 'EOF'
 TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
 ADMIN_ID=your_telegram_id
+# For multiple admins, use: ADMIN_ID=123456789,987654321
 MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/dbname
 
 # Static Configuration

@@ -70,7 +70,7 @@ const messages = {
         usage_server: "🌍 Server: {server}",
         usage_upload: "⬆️ Upload: {up}",
         usage_download: "⬇️ Download: {down}",
-        usage_total: "fw️ Total: {total}",
+        usage_total: "📦 Total: {total}",
         usage_limit: "📊 Data Limit: {limit}",
         key_expiry: "⏳ Key သက်တမ်း: {date}",
         never: "Never",
