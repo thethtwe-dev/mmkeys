@@ -355,7 +355,11 @@ bot.action(/^server:(.+)$/, async (ctx) => {
             return ctx.reply(t(lang, 'server_unavailable'));
         }
 
-        await ctx.answerCbQuery(t(lang, 'fetching_protocols'));
+        try {
+            await ctx.answerCbQuery(t(lang, 'fetching_protocols'));
+        } catch (e) {
+            console.warn("Debug: AnswerCbQuery failed (timeout?), continuing...", e.message);
+        }
 
         console.log(`Debug: Fetching inbounds for ${serverId}...`);
         const inbounds = await api.getAllInbounds();
