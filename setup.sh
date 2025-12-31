@@ -27,27 +27,27 @@ fi
 echo -e "${YELLOW}[3/5] Installing NPM Dependencies...${NC}"
 npm install
 
-# 4. Setup Config Files
+# 4. Setup .env File
 echo -e "${YELLOW}[4/5] Checking Configuration...${NC}"
 
 if [ ! -f .env ]; then
     echo -e "${YELLOW}.env file not found!${NC}"
-    read -p "Press Enter to create .env file (Paste your content, Save & Exit with Ctrl+O, Enter, Ctrl+X)..."
+    echo -e "${YELLOW}Creating minimal .env template...${NC}"
+    cat > .env << 'EOF'
+TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
+ADMIN_ID=your_telegram_id
+MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/dbname
+
+# Static Configuration
+EXPIRE_DAYS=30
+LIMIT_GB_FREE=50
+LIMIT_GB_PREMIUM=0
+EOF
+    echo -e "${GREEN}.env template created. Opening editor...${NC}"
+    read -p "Press Enter to edit .env file (Replace values, Save with Ctrl+O, Enter, Exit with Ctrl+X)..."
     nano .env
 else
     echo -e "${GREEN}.env file exists.${NC}"
-fi
-
-if [ ! -d config ]; then
-    mkdir config
-fi
-
-if [ ! -f config/servers.json ]; then
-    echo -e "${YELLOW}config/servers.json not found!${NC}"
-    read -p "Press Enter to create servers.json (Paste your content, Save & Exit with Ctrl+O, Enter, Ctrl+X)..."
-    nano config/servers.json
-else
-    echo -e "${GREEN}config/servers.json exists.${NC}"
 fi
 
 # 5. Setup PM2
@@ -72,7 +72,12 @@ rm temp_startup.sh
 echo -e "${GREEN}=================================${NC}"
 echo -e "${GREEN}   Setup Complete! Bot Running   ${NC}"
 echo -e "${GREEN}=================================${NC}"
-echo -e "Useful Commands:"
-echo -e "  Stop Bot:    ${YELLOW}pm2 stop mmkeys${NC}"
-echo -e "  Restart Bot: ${YELLOW}pm2 restart mmkeys${NC}"
-echo -e "  View Logs:   ${YELLOW}pm2 logs mmkeys${NC}"
+echo -e ""
+echo -e "${YELLOW}Next Steps:${NC}"
+echo -e "  1. Add your first server with: ${GREEN}/add_server <json>${NC}"
+echo -e "  2. Configure settings with: ${GREEN}/config${NC}"
+echo -e ""
+echo -e "${YELLOW}Useful Commands:${NC}"
+echo -e "  Stop Bot:    ${GREEN}pm2 stop mmkeys${NC}"
+echo -e "  Restart Bot: ${GREEN}pm2 restart mmkeys${NC}"
+echo -e "  View Logs:   ${GREEN}pm2 logs mmkeys${NC}"
