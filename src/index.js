@@ -343,20 +343,26 @@ bot.action(/^server:(.+)$/, async (ctx) => {
     const serverId = ctx.match[1];
     const userId = ctx.from.id;
 
+    console.log(`Debug: User ${userId} selected server ${serverId}`);
+
     try {
         const user = await db.getUser(userId);
         const lang = user ? user.language : 'my';
 
         const api = serverManager.getApi(serverId);
-        if (!api) return ctx.reply(t(lang, 'server_unavailable'));
+        if (!api) {
+            console.error(`Debug: API not found for ${serverId}`);
+            return ctx.reply(t(lang, 'server_unavailable'));
+        }
 
         await ctx.answerCbQuery(t(lang, 'fetching_protocols'));
 
-        // We only show inbounds valid for user generation (usually standard VLESS/VMESS ports)
-        // For MVP, show all.
+        console.log(`Debug: Fetching inbounds for ${serverId}...`);
         const inbounds = await api.getAllInbounds();
+        console.log(`Debug: Fetched ${inbounds ? inbounds.length : 0} inbounds`);
 
         if (!inbounds || inbounds.length === 0) {
+            console.log("Debug: No inbounds found/returned.");
             return ctx.reply(t(lang, 'no_protocols'));
         }
 
@@ -365,11 +371,15 @@ bot.action(/^server:(.+)$/, async (ctx) => {
             return [Markup.button.callback(label, `proto:${serverId}:${i.id}`)];
         });
 
-        ctx.editMessageText(t(lang, 'select_protocol', { server: serverId }), Markup.inlineKeyboard(buttons));
+        await ctx.editMessageText(t(lang, 'select_protocol', { server: serverId }), Markup.inlineKeyboard(buttons));
+        console.log("Debug: Protocol selection menu sent.");
 
     } catch (error) {
         console.error("Error fetching inbounds:", error);
-        ctx.reply("❌ Failed to fetch protocols.");
+        // Reply with error so loading doesn't hang forever
+        try {
+            await ctx.reply("❌ Failed to fetch protocols. Check logs.");
+        } catch (e) { }
     }
 });
 
@@ -898,8 +908,13 @@ setInterval(async () => {
     }
 }, 3600 * 1000); // 1 hour
 
+console.log('🚀 Starting MMKeys Bot...');
+
 bot.launch().then(() => {
-    console.log('MMKeys Bot is running (Multi-Server Refactor)...');
+    console.log('✅ MMKeys Bot is running (Multi-Server Refactor)...');
+}).catch(err => {
+    console.error('❌ Failed to launch bot:', err);
+    process.exit(1);
 });
 
 // Enable graceful stop
