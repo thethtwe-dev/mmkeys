@@ -812,6 +812,16 @@ bot.on(['photo', 'text'], async (ctx) => {
     }
 });
 
+// Helper to escape HTML
+const escapeHtml = (unsafe) => {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+};
+
 // Admin Actions
 bot.action(/^ban:(\d+)$/, async (ctx) => {
     const targetUserId = parseInt(ctx.match[1]);
@@ -848,12 +858,12 @@ bot.action(/^approve:(\d+):(\d+)$/, async (ctx) => {
         await bot.telegram.sendMessage(targetUserId, t(lang, 'admin_approved'));
 
         const originalText = ctx.callbackQuery.message.caption || ctx.callbackQuery.message.text;
-        const newText = `${originalText}\n\n✅ *APPROVED*`;
+        const newText = `${escapeHtml(originalText)}\n\n✅ <b>APPROVED</b>`;
 
         if (ctx.callbackQuery.message.caption) {
-            await ctx.editMessageCaption(newText, { parse_mode: 'Markdown' });
+            await ctx.editMessageCaption(newText, { parse_mode: 'HTML' });
         } else {
-            await ctx.editMessageText(newText, { parse_mode: 'Markdown' });
+            await ctx.editMessageText(newText, { parse_mode: 'HTML' });
         }
     } catch (e) {
         console.error(e);
@@ -871,12 +881,12 @@ bot.action(/^reject:(\d+)$/, async (ctx) => {
         await bot.telegram.sendMessage(targetUserId, t(lang, 'admin_rejected'));
 
         const originalText = ctx.callbackQuery.message.caption || ctx.callbackQuery.message.text;
-        const newText = `${originalText}\n\n❌ *REJECTED*`;
+        const newText = `${escapeHtml(originalText)}\n\n❌ <b>REJECTED</b>`;
 
         if (ctx.callbackQuery.message.caption) {
-            await ctx.editMessageCaption(newText, { parse_mode: 'Markdown' });
+            await ctx.editMessageCaption(newText, { parse_mode: 'HTML' });
         } else {
-            await ctx.editMessageText(newText, { parse_mode: 'Markdown' });
+            await ctx.editMessageText(newText, { parse_mode: 'HTML' });
         }
     } catch (e) {
         console.error(e);
