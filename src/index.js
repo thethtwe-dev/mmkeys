@@ -19,7 +19,7 @@ const freeExpireDays = parseInt(process.env.EXPIRE_DAYS) || 30;
 
 // Spam Protection Config
 const rateLimitMs = parseInt(process.env.RATE_LIMIT_MS) || 2000;
-const requiredChannel = process.env.REQUIRED_CHANNEL; // Username of channel
+const requiredChannel = process.env.REQUIRED_CHANNEL ? process.env.REQUIRED_CHANNEL.replace('@', '') : null; // Remove @ if user added it
 
 // Rate Limit Map
 const userLastMessage = new Map();
